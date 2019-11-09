@@ -3,7 +3,7 @@
 # = framer =====================================================================
 #
 # Version 0.1 (2019.10.18)
-# Create standarized posts for Instagram
+# Simple bash script for framing your photos
 #
 # by Carlos Vigil Vásquez
 # https://github.com/cvigilv/
@@ -11,20 +11,23 @@
 
 # SCRIPT HISTORY
 _version_="0.1"
-_released_="Currently in development"
-_title_="IGpost - Standarized Instagram posts $_version_"
+_released_="2019.10.18"
+_title_="framer - Frame your photos $_version_"
 
 # ARGUMENT PARSING
  helper()
 {
 echo
 "
-Usage: IGpost [arguments]
+Usage: framer [arguments]
 
 Arguments:
-    -h or --help        Print Help (this message) and exit
-    --version           Print version information and exit
-    -f or --file        Image file path";
+    -h or --help                Print Help (this message) and exit
+    --version                   Print version information and exit
+    -f or --file                Image file path
+    -c or --canvas_hex          Image frame color, must be a hex color code (#FFFFFF)
+    -b or --border_hex          Image border color, must be a hex color code (#FFFFFF)
+";
 exit 1;
 }
 
@@ -33,27 +36,47 @@ ver()
 echo
 "
 Version:        $_version_
-Release:        $_released_";
+Release:        $_released_
+";
 exit 1;
+}
+
+check_hex()
+{
+
 }
 
 echo "$_title_"
 
-if [[ -z $1 ]]; then
+if [[ $# == 0 ]]; then
     echo -e "\nUsage:\t\t$0 [ --help ] [ --version ]\nMore info with:\t$0 --help"
     exit 1
 fi
 
-while [[ $# -gt 0 ]]
-do
+while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
         -h|--help) helper;;                          # Show help message
         -v|--version) ver;;                          # Show version message
-        -f|--file) IMAGE="$2"; shift; shift;;        # Get folder path
+        -f|--file) IMAGE="$2"; shift; shift;;        # File path
+        -c|--canvas_hex) CANVAS_COLOUR="$2"; shift; shift;;
+        -b|--border_hex) BORDER_COLOUR="$2"; shift; shift;;
+        -m|--mode) MODE="$2"; shift; shift;;
         *)  echo "Unknown argument \'$1\'"; exit 0;; # Exit on unknown argument
     esac
 done
+
+# Check if image path exists
+if [ ! -f ${IMAGE} ]; then
+    echo "[FATAL ERROR] - No such file as '${IMAGE}'"
+    exit 2
+fi
+
+# Check if canvas and/or border colors is a valid hex value
+if [[ "${CANVAS_COLOUR}" != "#"* ]]; then
+    echo "[FATAL ERROR] - '${CANVAS_COLOUR}' is not a valid hex code."
+fi
+
 
 RESIZED_IMAGE="/tmp/resized_$(basename ${IMAGE})"
 CANVAS="/tmp/canvas.jpg"
@@ -63,30 +86,25 @@ POST="$(echo ${IMAGE} | sed --expression='s/.jpg/-IG.jpg/g')"
 COLOURED=$(convert ${IMAGE} \
     -colorspace HSL -channel g -separate +channel -format "%[fx:mean]" info:)
 
-rm /tmp/backgrounds.sh
-rm /tmp/backgrounds.png
-rm /tmp/caption.txt
-
 if [ "$COLOURED" != "0" ]; then
-    COLOUR_OPTIONS=$(convert ${IMAGE} -scale 32x32! -depth 8 +dither -colors 8 \
+    COLOUR_OPTIONS="xc:\"rgb(254,254,254)\" $(convert ${IMAGE} -scale 32x32! -depth 8 +dither -colors 8 \
         -format "%c" histogram:info: | sort -r -n -k 1 -t " " | \
-        awk '{print $NF}' | sed 's/s/xc:"/' | sed 's/$/"/')
-    eval "convert -size 128x128 label:'${IMAGE}:' ${COLOUR_OPTIONS//$'\n'/ } +append /tmp/backgrounds.png" && feh /tmp/backgrounds.png &
-    echo 'Which colour will the background have? (1 through 8)'
+        awk '{print $NF}' | sed 's/s/xc:"/' | sed 's/$/"/')"
+    eval "convert -size 128x128 label:'${IMAGE}:' ${COLOUR_OPTIONS//$'\n'/ } +append /tmp/backgrounds.png" && feh --scale-down --auto-zoom /tmp/backgrounds.png &
+    echo 'Which colour will the background have? (1 through 9)'
     read PICKED
 
-    BORDER_COLOUR='white'
-    CANVAS_COLOUR=$(echo ${COLOUR_OPTIONS//$'\n'/ } | cut -d" " -f${PICKED} | sed 's/xc://')
+    [ -z "$BORDER_COLOUR" ] && BORDER_COLOUR='white'
+    [ -z "$CANVAS_COLOUR" ] && CANVAS_COLOUR=$(echo ${COLOUR_OPTIONS//$'\n'/ } | cut -d" " -f${PICKED} | sed 's/xc://')
 else
-    BORDER_COLOUR='black'
-    CANVAS_COLOUR='white'
+    [ -z "$BORDER_COLOUR" ] && BORDER_COLOUR='black'
+    [ -z "$CANVAS_COLOUR" ] && CANVAS_COLOUR='white'
 fi
 
-eval "convert -size 2000x2000 xc:${CANVAS_COLOUR//,/, } ${CANVAS}"
+eval "convert -size 2000x2000 xc:${CANVAS_COLOUR} ${CANVAS}"
 convert ${IMAGE} -resize 1850x1850\> -bordercolor $BORDER_COLOUR -border 20 ${RESIZED_IMAGE}
-composite -gravity center ${RESIZED_IMAGE} ${CANVAS} ${POST}
+composite -gravity center ${RESIZED_IMAGE} ${CANVAS} -type TrueColor ${POST}
 
-touch ${CAPTION}
-echo -e "\n·\n·\n·\n·\n#<++> #<++> #<++> #<++> #filmphotography #backtothebase #35mm" >> ${CAPTION}
+echo -e "\n·\n·\n·\n·\n#<++> #<++> #<++> #<++> #filmphotography #backtothebase #35mm" > ${CAPTION}
 nvim ${CAPTION}
 mogrify -set comment "$(cat ${CAPTION})" ${POST}
